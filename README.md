@@ -16,6 +16,7 @@ Default list directory: `~/.applists` (override by exporting `OUTDIR`)
   - `--recreate-explicit`: only for Brew formulae and pip user packages, uninstall everything for that type and install exactly from lists.
   - `--types LIST` (or positional CSV); `--dry-run|-n`; `--help`.
   - Manual apps are report-only: prints names of apps from the list that are not installed.
+  - Arc extensions are report-only: prints missing/extraneous extension IDs with Chrome Web Store links.
 - update-all-apps.sh
   - Update/upgrade installed packages/apps by type.
   - Flags: `--types LIST` (or positional CSV), `--help`.
@@ -36,6 +37,7 @@ All scripts support `--help` and fail fast on unknown options.
 - brew-casks
 - appstore
 - manual-apps
+- arc-extensions
 - npm
 - yarn
 - pnpm
@@ -50,6 +52,7 @@ Use `--types` to select a subset, e.g. `--types brew-casks,npm`. You can also pa
 - brew-casks.txt: `full/cask/name` (e.g. `homebrew/cask/google-chrome`)
 - appstore-apps.txt: `ID # App Name` (ID used for installs; name is informational)
 - manual-apps.txt: App bundle names like `Some App.app` (report-only in sync)
+- arc-extensions.txt: one extension ID per line with optional `# Name`
 - npm-global.txt: package names without versions (scopes preserved)
 - yarn-global.txt: package names without versions (scopes preserved)
 - pnpm-global.txt: package names (from `pnpm list -g --json`)
@@ -64,6 +67,7 @@ Use `--types` to select a subset, e.g. `--types brew-casks,npm`. You can also pa
   - `./sync-from-app-lists.sh`
 - Also prune extras (uninstall things not in the lists):
   - `./sync-from-app-lists.sh --prune-extras`
+- Arc extensions require manual action; sync will show links to install/uninstall.
 - Recreate explicit sets (Brew formulae, pip only):
   - `./sync-from-app-lists.sh --recreate-explicit --types pip,brew-formulae`
 - Update existing packages/apps:

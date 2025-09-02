@@ -42,6 +42,29 @@ log_error()   { printf "%s❌ %s%s\n"  "${_RED}"    "$*" "${_RESET}" >&2; }
 log_step()    { printf "%s➡️  %s%s\n"  "${_BOLD}"   "$*" "${_RESET}"; }
 
 
+# --- Arc browser helpers -----------------------------------------------------
+# List installed Arc extension IDs by scanning the Arc User Data profiles.
+# Outputs one ID per line (deduplicated). Best-effort.
+arc_extensions_list_ids() {
+  local base1="$HOME/Library/Application Support/Arc/User Data"
+  local base2="$HOME/Library/Application Support/Arc"
+  local base=""
+  if [ -d "$base1" ]; then
+    base="$base1"
+  elif [ -d "$base2" ]; then
+    base="$base2"
+  else
+    return 0
+  fi
+  find "$base" -type d -name Extensions 2>/dev/null \
+    | while IFS= read -r extdir; do
+        find "$extdir" -mindepth 1 -maxdepth 1 -type d -print 2>/dev/null
+      done \
+    | awk -F'/' '{print $NF}' \
+    | grep -E '^[a-z]{16,}$' \
+    | sort -u || true
+}
+
 # --- Types filtering helpers -------------------------------------------------
 # Usage in scripts:
 #   types_parse_args "$@"   # sets global TYPES from --types or positional CSV

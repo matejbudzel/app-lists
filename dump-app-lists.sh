@@ -15,7 +15,8 @@ Options:
   --keep-existing, -k   Do not clean OUTDIR before exporting (default: clean)
   --types LIST          Comma-separated types to export (or positional CSV)
                         Types: brew, brew-taps, brew-formulae, brew-casks,
-                               appstore, manual-apps, npm, yarn, pnpm, pip
+                               appstore, manual-apps, arc-extensions,
+                               npm, yarn, pnpm, pip
   --help, -h            Show this help and exit
 
 Examples:
@@ -62,6 +63,58 @@ if [ "$CLEAN_OUTDIR" = "1" ]; then
         # Remove all items (including dotfiles) but not the directory itself
         find "$OUTDIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
     fi
+fi
+
+# --- Arc extensions ---
+if has_type arc-extensions; then
+  log_info "Exporting Arc extensions..."
+  tmp_arc="$OUTDIR/.arc-extensions.tmp"
+  : > "$tmp_arc"
+  arc_extensions_list_ids | while IFS= read -r id; do
+    [ -z "$id" ] && continue
+    name=""
+    # Try to resolve name from local manifest
+    manifest_path=$(find "$HOME/Library/Application Support/Arc" -type f -path "*/Extensions/$id/*/manifest.json" -print -quit 2>/dev/null || true)
+    if [ -n "$manifest_path" ] && command -v jq >/dev/null 2>&1; then
+      raw_name=$(jq -r '.name // empty' "$manifest_path" 2>/dev/null || echo "")
+      if [ -n "$raw_name" ]; then
+        if [[ "$raw_name" == __MSG_* ]]; then
+          key=${raw_name#__MSG_}; key=${key%%_*}
+          # Prefer en locale if present, otherwise first messages.json
+          msg_file="$(dirname "$manifest_path")/_locales/en/messages.json"
+          if [ ! -f "$msg_file" ]; then
+            msg_file=$(find "$(dirname "$manifest_path")/_locales" -name messages.json -print -quit 2>/dev/null || true)
+          fi
+          if [ -n "$msg_file" ] && [ -f "$msg_file" ] && command -v jq >/dev/null 2>&1; then
+            name=$(jq -r --arg k "$key" '.[$k].message // empty' "$msg_file" 2>/dev/null || echo "")
+          fi
+        else
+          name="$raw_name"
+        fi
+      fi
+    fi
+    # Optional: try fetching from Chrome Web Store if still unknown (best-effort)
+    if [ -z "$name" ] && command -v curl >/dev/null 2>&1; then
+      html=$(curl -fsL --max-time 3 "https://chromewebstore.google.com/detail/$id" 2>/dev/null || true)
+      if [ -z "$html" ]; then
+        html=$(curl -fsL --max-time 3 "https://chrome.google.com/webstore/detail/$id" 2>/dev/null || true)
+      fi
+      if [ -n "$html" ]; then
+        name=$(printf "%s" "$html" | sed -n 's/.*<title>\([^<]*\)<\/title>.*/\1/p' | head -n1 | sed 's/ - Chrome Web Store$//')
+      fi
+    fi
+    if [ -n "$name" ]; then
+      printf "%s # %s\n" "$id" "$name" >> "$tmp_arc"
+    else
+      printf "%s\n" "$id" >> "$tmp_arc"
+    fi
+  done
+  if [ -s "$tmp_arc" ]; then
+    sort -u "$tmp_arc" > "$OUTDIR/arc-extensions.txt"
+  else
+    rm -f "$OUTDIR/arc-extensions.txt"
+  fi
+  rm -f "$tmp_arc"
 fi
 
 log_step "Exporting package and app lists to $OUTDIR"
@@ -178,6 +231,7 @@ count_non_empty() {
     echo 0
   fi
 }
+log_info "arc-extensions.txt: $(count_non_empty "$OUTDIR/arc-extensions.txt")"
 log_info "brew-taps.txt: $(count_non_empty "$OUTDIR/brew-taps.txt")"
 log_info "brew-formulae.txt: $(count_non_empty "$OUTDIR/brew-formulae.txt")"
 log_info "brew-casks.txt: $(count_non_empty "$OUTDIR/brew-casks.txt")"

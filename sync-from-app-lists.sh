@@ -31,7 +31,8 @@ Options:
   --recreate-explicit     Only for Brew formulae and pip user packages
   --types LIST            Comma-separated types, or positional CSV
                           Types: brew, brew-taps, brew-formulae, brew-casks,
-                                 appstore, manual-apps, npm, yarn, pnpm, pip
+                                 appstore, manual-apps, arc-extensions,
+                                 npm, yarn, pnpm, pip
   --help, -h              Show this help and exit
 
 Examples:
@@ -65,6 +66,38 @@ if [ "$DRYRUN" = "1" ]; then
   log_step "Starting sync (DRY-RUN) from $OUTDIR ..."
 else
   log_step "Starting sync from $OUTDIR ..."
+fi
+
+# --- Arc extensions (report-only) --------------------------------------------
+if has_type arc-extensions; then
+  log_step "Checking Arc extensions (report-only) ..."
+  tmp_want=$(mktemp); tmp_have=$(mktemp)
+  if [ -f "$OUTDIR/arc-extensions.txt" ]; then
+    awk -F'#' '{gsub(/^[ \t]+|[ \t]+$/,"",$1); if ($1 ~ /^[a-z]{16,}$/) print $1}' "$OUTDIR/arc-extensions.txt" | sort -u > "$tmp_want"
+  else
+    : > "$tmp_want"
+  fi
+  arc_extensions_list_ids | sort -u > "$tmp_have" || :
+  # Compute sets
+  missing=$(comm -23 "$tmp_want" "$tmp_have" || true)
+  extra=$(comm -23 "$tmp_have" "$tmp_want" || true)
+  # Report missing
+  if [ -n "$missing" ]; then
+    log_info "Extensions to install (manual):"
+    printf '%s\n' "$missing" | awk '{printf("- %s => https://chrome.google.com/webstore/detail/%s\n", $0, $0)}'
+  else
+    log_success "No missing Arc extensions"
+  fi
+  # Report extras when pruning
+  if [ "$PRUNE_EXTRAS" = "1" ]; then
+    if [ -n "$extra" ]; then
+      log_info "Extensions to remove (manual):"
+      printf '%s\n' "$extra" | awk '{printf("- %s => https://chrome.google.com/webstore/detail/%s\n", $0, $0)}'
+    else
+      log_success "No extra Arc extensions"
+    fi
+  fi
+  rm -f "$tmp_want" "$tmp_have"
 fi
 
 _strip_list() {
