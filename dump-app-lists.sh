@@ -6,6 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Options:
 #   --keep-existing | -k   Do not clean OUTDIR before exporting
+#   --types LIST           Comma-separated list of sections to export
+#                          e.g. "brew-casks,appstore,npm,yarn,pnpm,pip,manual-apps,brew-taps,brew-formulae"
 
 # Default: clean OUTDIR before dumping
 CLEAN_OUTDIR=1
@@ -14,6 +16,11 @@ for arg in "$@"; do
     --keep-existing|-k) CLEAN_OUTDIR=0 ;;
   esac
 done
+
+# Parse shared --types/positional CSV into global TYPES (from _common.sh)
+types_parse_args "$@"
+
+# has_type() provided by _common.sh; empty TYPES => all enabled.
 
 # Ensure output directory exists and is writable
 mkdir -p "$OUTDIR" || { log_error "Unable to create $OUTDIR"; exit 1; }
@@ -36,40 +43,50 @@ fi
 log_step "Exporting package and app lists to $OUTDIR"
 
 # --- Homebrew ---
-if command -v brew &> /dev/null; then
-    log_info "Exporting Homebrew taps..."
-    brew tap > "$OUTDIR/brew-taps.txt"
-    log_info "Exporting Homebrew formulae (explicit only)..."
-    if command -v jq &> /dev/null; then
+if has_type brew || has_type brew-taps || has_type brew-formulae || has_type brew-casks; then
+  if command -v brew &> /dev/null; then
+    if has_type brew || has_type brew-taps; then
+      log_info "Exporting Homebrew taps..."
+      brew tap > "$OUTDIR/brew-taps.txt"
+    fi
+    if has_type brew || has_type brew-formulae; then
+      log_info "Exporting Homebrew formulae (explicit only)..."
+      if command -v jq &> /dev/null; then
         brew info --json=v2 --installed \
           | jq -r '.formulae[] | select(any(.installed[]?; .installed_on_request)) | .full_name' \
           > "$OUTDIR/brew-formulae.txt"
-    else
+      else
         log_warn "jq not found; falling back to 'brew leaves' (may differ from explicit installs)"
         brew leaves > "$OUTDIR/brew-formulae.txt"
+      fi
     fi
-    log_info "Exporting Homebrew casks..."
-    brew list --cask --full-name > "$OUTDIR/brew-casks.txt"
-else
+    if has_type brew || has_type brew-casks; then
+      log_info "Exporting Homebrew casks..."
+      brew list --cask --full-name > "$OUTDIR/brew-casks.txt"
+    fi
+  else
     log_warn "Homebrew not found, skipping."
+  fi
 fi
 
 # --- Mac App Store ---
-if command -v mas &> /dev/null; then
+if has_type appstore && command -v mas &> /dev/null; then
     log_info "Exporting Mac App Store apps..."
     mas list | awk '{id=$1; $1=""; sub(/^ /,"", $0); sub(/ *\([^)]+\).*$/,"", $0); printf "%s # %s\n", id, $0}' > "$OUTDIR/appstore-apps.txt"
 fi
 
 # --- Manual Apps (/Applications & ~/Applications not via Brew or MAS) ---
-apps_system=$(ls /Applications 2>/dev/null || echo "")
-apps_user=$(ls ~/Applications 2>/dev/null || echo "")
-brew_casks=$(brew list --cask 2>/dev/null)
-appstore_apps=$(awk -F'#' '{name=$2; gsub(/^[ \t]+|[ \t]+$/,"",name); if (name!="") print name ".app"}' "$OUTDIR/appstore-apps.txt" 2>/dev/null || echo "")
-other_apps=$(comm -23 <(echo -e "$apps_system\n$apps_user" | sort) <(echo -e "$brew_casks\n$appstore_apps" | sort))
-echo "$other_apps" > "$OUTDIR/manual-apps.txt"
+if has_type manual-apps; then
+  apps_system=$(ls /Applications 2>/dev/null || echo "")
+  apps_user=$(ls ~/Applications 2>/dev/null || echo "")
+  brew_casks=$(brew list --cask 2>/dev/null)
+  appstore_apps=$(awk -F'#' '{name=$2; gsub(/^[ \t]+|[ \t]+$/,"",name); if (name!="") print name ".app"}' "$OUTDIR/appstore-apps.txt" 2>/dev/null || echo "")
+  other_apps=$(comm -23 <(echo -e "$apps_system\n$apps_user" | sort) <(echo -e "$brew_casks\n$appstore_apps" | sort))
+  echo "$other_apps" > "$OUTDIR/manual-apps.txt"
+fi
 
 # --- npm ---
-if command -v npm &> /dev/null; then
+if has_type npm && command -v npm &> /dev/null; then
     log_info "Exporting global npm packages..."
     tmp_npm="$OUTDIR/.npm-global.tmp"
     npm list -g --depth=0 2>/dev/null \
@@ -83,7 +100,7 @@ if command -v npm &> /dev/null; then
 fi
 
 # --- Yarn ---
-if command -v yarn &> /dev/null; then
+if has_type yarn && command -v yarn &> /dev/null; then
     log_info "Exporting global Yarn packages..."
     tmp_yarn="$OUTDIR/.yarn-global.tmp"
     yarn global list --depth=0 2>/dev/null \
@@ -97,7 +114,7 @@ if command -v yarn &> /dev/null; then
 fi
 
 # --- pnpm ---
-if command -v pnpm &> /dev/null; then
+if has_type pnpm && command -v pnpm &> /dev/null; then
     log_info "Exporting global pnpm packages..."
     tmp_pnpm="$OUTDIR/.pnpm-global.tmp"
     pnpm list -g --depth=0 --json 2>/dev/null \
@@ -112,7 +129,7 @@ fi
 
 # --- pip (unified; explicit packages only) ---
 PIP_CMD="$(detect_pip_cmd)"
-if [ -n "$PIP_CMD" ]; then
+if has_type pip && [ -n "$PIP_CMD" ]; then
     log_info "Exporting user pip packages (explicit only) using $PIP_CMD..."
     # Try direct freeze of not-required top-level packages
     if $PIP_CMD list --user --not-required --format=freeze 2>/dev/null | sed -e 's/==.*$//' > "$OUTDIR/pip-user.txt"; then

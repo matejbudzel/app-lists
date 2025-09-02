@@ -41,3 +41,34 @@ log_success() { printf "%s✅ %s%s\n"  "${_GREEN}"  "$*" "${_RESET}"; }
 log_error()   { printf "%s❌ %s%s\n"  "${_RED}"    "$*" "${_RESET}" >&2; }
 log_step()    { printf "%s➡️  %s%s\n"  "${_BOLD}"   "$*" "${_RESET}"; }
 
+
+# --- Types filtering helpers -------------------------------------------------
+# Usage in scripts:
+#   types_parse_args "$@"   # sets global TYPES from --types or positional CSV
+#   if has_type npm; then ...; fi
+
+# Global TYPES variable (empty means all types enabled)
+: "${TYPES:=}"
+
+types_parse_args() {
+  local NEXT_TYPES=0
+  for arg in "$@"; do
+    case "$arg" in
+      --types=*) TYPES="${arg#*=}" ;;
+      --types) NEXT_TYPES=1 ;;
+      *)
+        if [ "$NEXT_TYPES" = "1" ]; then TYPES="$arg"; NEXT_TYPES=0
+        elif [ -z "${TYPES:-}" ] && [[ "$arg" != -* ]]; then TYPES="$arg"; fi ;;
+    esac
+  done
+}
+
+has_type() {
+  local key="$1"
+  if [ -z "${TYPES:-}" ]; then return 0; fi
+  case ",${TYPES}," in
+    *",${key}," ) return 0 ;;
+    * ) return 1 ;;
+  esac
+}
+

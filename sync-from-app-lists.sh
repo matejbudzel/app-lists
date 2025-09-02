@@ -23,6 +23,11 @@ for arg in "$@"; do
   esac
 done
 
+# Parse shared --types/positional CSV into global TYPES
+types_parse_args "$@"
+
+# has_type() provided by _common.sh; empty TYPES => all enabled.
+
 if [ "$DRYRUN" = "1" ]; then
   log_step "Starting sync (DRY-RUN) from $OUTDIR ..."
 else
@@ -35,18 +40,20 @@ _strip_list() {
 }
 
 # --- Homebrew ---------------------------------------------------------------
-if ! command -v brew &> /dev/null; then
-  log_step "Installing Homebrew..."
-  if [ "$DRYRUN" = "1" ]; then
-    log_info "Would run: Homebrew install script"
-  else
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+if has_type brew || has_type brew-taps || has_type brew-formulae || has_type brew-casks; then
+  if ! command -v brew &> /dev/null; then
+    log_step "Installing Homebrew..."
+    if [ "$DRYRUN" = "1" ]; then
+      log_info "Would run: Homebrew install script"
+    else
+      /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    fi
   fi
+  [ "$DRYRUN" = "1" ] || brew update
 fi
-[ "$DRYRUN" = "1" ] || brew update
 
 # Taps: add missing (do not prune by default)
-if [ -f "$OUTDIR/brew-taps.txt" ] && [ -s "$OUTDIR/brew-taps.txt" ]; then
+if (has_type brew || has_type brew-taps) && [ -f "$OUTDIR/brew-taps.txt" ] && [ -s "$OUTDIR/brew-taps.txt" ]; then
   current_taps="$(brew tap 2>/dev/null || true)"
   tmp_want=$(mktemp); tmp_have=$(mktemp)
   _strip_list < "$OUTDIR/brew-taps.txt" > "$tmp_want"
@@ -67,7 +74,7 @@ if [ -f "$OUTDIR/brew-taps.txt" ] && [ -s "$OUTDIR/brew-taps.txt" ]; then
 fi
 
 # Formulae
-if [ -f "$OUTDIR/brew-formulae.txt" ]; then
+if (has_type brew || has_type brew-formulae) && [ -f "$OUTDIR/brew-formulae.txt" ]; then
   if [ "$RECREATE_EXPLICIT" = "1" ]; then
     log_step "Syncing Brew formulae (recreate explicit set) ..."
     if [ "$DRYRUN" = "1" ]; then
@@ -120,7 +127,7 @@ if [ -f "$OUTDIR/brew-formulae.txt" ]; then
 fi
 
 # Casks: install missing, uninstall extras
-if [ -f "$OUTDIR/brew-casks.txt" ]; then
+if (has_type brew || has_type brew-casks) && [ -f "$OUTDIR/brew-casks.txt" ]; then
   log_step "Syncing Brew casks ..."
   tmp_want=$(mktemp); tmp_have=$(mktemp)
   _strip_list < "$OUTDIR/brew-casks.txt" > "$tmp_want"
@@ -161,7 +168,7 @@ if [ -f "$OUTDIR/brew-casks.txt" ]; then
 fi
 
 # --- Mac App Store ----------------------------------------------------------
-if [ -f "$OUTDIR/appstore-apps.txt" ] && command -v mas &> /dev/null; then
+if has_type appstore && [ -f "$OUTDIR/appstore-apps.txt" ] && command -v mas &> /dev/null; then
   log_step "Syncing Mac App Store apps (install missing only) ..."
   tmp_want=$(mktemp); tmp_have=$(mktemp)
   awk -F'#' '{gsub(/^[ \t]+|[ \t]+$/,"",$1); if ($1 ~ /^[0-9]+$/) print $1}' "$OUTDIR/appstore-apps.txt" | sort -u > "$tmp_want"
@@ -178,7 +185,7 @@ if [ -f "$OUTDIR/appstore-apps.txt" ] && command -v mas &> /dev/null; then
 fi
 
 # --- npm --------------------------------------------------------------------
-if [ -f "$OUTDIR/npm-global.txt" ] && command -v npm &> /dev/null; then
+if has_type npm && [ -f "$OUTDIR/npm-global.txt" ] && command -v npm &> /dev/null; then
   log_step "Syncing global npm packages (install missing only) ..."
   tmp_want=$(mktemp); tmp_have=$(mktemp)
   _strip_list < "$OUTDIR/npm-global.txt" > "$tmp_want"
@@ -195,7 +202,7 @@ if [ -f "$OUTDIR/npm-global.txt" ] && command -v npm &> /dev/null; then
 fi
 
 # --- Yarn -------------------------------------------------------------------
-if [ -f "$OUTDIR/yarn-global.txt" ] && command -v yarn &> /dev/null; then
+if has_type yarn && [ -f "$OUTDIR/yarn-global.txt" ] && command -v yarn &> /dev/null; then
   log_step "Syncing global Yarn packages (install missing only) ..."
   tmp_want=$(mktemp); tmp_have=$(mktemp)
   _strip_list < "$OUTDIR/yarn-global.txt" > "$tmp_want"
@@ -212,7 +219,7 @@ if [ -f "$OUTDIR/yarn-global.txt" ] && command -v yarn &> /dev/null; then
 fi
 
 # --- pnpm -------------------------------------------------------------------
-if [ -f "$OUTDIR/pnpm-global.txt" ] && command -v pnpm &> /dev/null; then
+if has_type pnpm && [ -f "$OUTDIR/pnpm-global.txt" ] && command -v pnpm &> /dev/null; then
   log_step "Syncing global pnpm packages (install missing only) ..."
   tmp_want=$(mktemp); tmp_have=$(mktemp)
   _strip_list < "$OUTDIR/pnpm-global.txt" > "$tmp_want"
@@ -234,7 +241,7 @@ if [ -f "$OUTDIR/pnpm-global.txt" ] && command -v pnpm &> /dev/null; then
 fi
 
 # --- pip (user) -------------------------------------------------------------
-if [ -f "$OUTDIR/pip-user.txt" ]; then
+if has_type pip && [ -f "$OUTDIR/pip-user.txt" ]; then
   PIP_CMD="$(detect_pip_cmd)"
   if [ -n "$PIP_CMD" ]; then
     if [ "$RECREATE_EXPLICIT" = "1" ]; then
