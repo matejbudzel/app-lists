@@ -115,15 +115,15 @@ PIP_CMD="$(detect_pip_cmd)"
 if [ -n "$PIP_CMD" ]; then
     log_info "Exporting user pip packages (explicit only) using $PIP_CMD..."
     # Try direct freeze of not-required top-level packages
-    if $PIP_CMD list --user --not-required --format=freeze > "$OUTDIR/pip-user.txt" 2>/dev/null; then
+    if $PIP_CMD list --user --not-required --format=freeze 2>/dev/null | sed -e 's/==.*$//' > "$OUTDIR/pip-user.txt"; then
         :
     # Fallback: JSON + jq to produce name==version
     elif command -v jq &> /dev/null && $PIP_CMD list --user --not-required --format=json > "$OUTDIR/.pip-list.json" 2>/dev/null; then
-        jq -r '.[] | "\(.name)==\(.version)"' "$OUTDIR/.pip-list.json" > "$OUTDIR/pip-user.txt"
+        jq -r '.[].name' "$OUTDIR/.pip-list.json" > "$OUTDIR/pip-user.txt"
         rm -f "$OUTDIR/.pip-list.json"
     else
         log_warn "Falling back to full freeze (includes dependencies)"
-        $PIP_CMD freeze --user > "$OUTDIR/pip-user.txt"
+        $PIP_CMD freeze --user | sed -e 's/==.*$//' > "$OUTDIR/pip-user.txt"
     fi
 fi
 
