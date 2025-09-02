@@ -4,6 +4,27 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/_common.sh"
 . "$SCRIPT_DIR/_config.sh"
 
+# Help/usage
+usage() {
+  cat <<'EOF'
+Usage: dump-app-lists.sh [--keep-existing|-k] [--types LIST|LIST]
+
+Export the current system state into ~/.applists files.
+
+Options:
+  --keep-existing, -k   Do not clean OUTDIR before exporting (default: clean)
+  --types LIST          Comma-separated types to export (or positional CSV)
+                        Types: brew, brew-taps, brew-formulae, brew-casks,
+                               appstore, manual-apps, npm, yarn, pnpm, pip
+  --help, -h            Show this help and exit
+
+Examples:
+  dump-app-lists.sh
+  dump-app-lists.sh --types npm,yarn,brew-casks
+  dump-app-lists.sh -k manual-apps
+EOF
+}
+
 # Options:
 #   --keep-existing | -k   Do not clean OUTDIR before exporting
 #   --types LIST           Comma-separated list of sections to export
@@ -14,6 +35,9 @@ CLEAN_OUTDIR=1
 for arg in "$@"; do
   case "$arg" in
     --keep-existing|-k) CLEAN_OUTDIR=0 ;;
+    --help|-h) usage; exit 0 ;;
+    --types|--types=*) : ;;
+    -*) log_error "Unknown option: $arg"; usage; exit 2 ;;
   esac
 done
 

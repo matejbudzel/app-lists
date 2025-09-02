@@ -16,6 +16,32 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/_common.sh"
 . "$SCRIPT_DIR/_config.sh"
 
+# Help/usage
+usage() {
+  cat <<'EOF'
+Usage: sync-from-app-lists.sh [options] [--types LIST|LIST]
+
+Sync machine state against lists in ~/.applists. By default installs missing
+items only. Use --prune-extras to also uninstall extras. Use --recreate-explicit
+only for Brew formulae and pip user packages to rebuild exactly from lists.
+
+Options:
+  --dry-run, -n           Show planned actions only; do not change system
+  --prune-extras          Also uninstall items not listed (where supported)
+  --recreate-explicit     Only for Brew formulae and pip user packages
+  --types LIST            Comma-separated types, or positional CSV
+                          Types: brew, brew-taps, brew-formulae, brew-casks,
+                                 appstore, manual-apps, npm, yarn, pnpm, pip
+  --help, -h              Show this help and exit
+
+Examples:
+  sync-from-app-lists.sh
+  sync-from-app-lists.sh --types brew-casks,npm
+  sync-from-app-lists.sh --prune-extras --types brew
+  sync-from-app-lists.sh --recreate-explicit --types pip,brew-formulae
+EOF
+}
+
 DRYRUN=0
 RECREATE_EXPLICIT=0
 PRUNE_EXTRAS=0
@@ -24,6 +50,9 @@ for arg in "$@"; do
     --dry-run|-n) DRYRUN=1 ;;
     --recreate-explicit) RECREATE_EXPLICIT=1 ;;
     --prune-extras) PRUNE_EXTRAS=1 ;;
+    --help|-h) usage; exit 0 ;;
+    --types|--types=*) : ;;
+    -*) log_error "Unknown option: $arg"; usage; exit 2 ;;
   esac
 done
 

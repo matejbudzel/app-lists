@@ -9,6 +9,28 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/_common.sh"
 
+# Help/usage
+usage() {
+  cat <<'EOF'
+Usage: list-apps-last-used.sh [--help|-h]
+
+List apps in /Applications and ~/Applications with last used time (relative and absolute),
+sorted by most recently used first. Apps never launched are shown at the end.
+
+Options:
+  --help, -h   Show this help and exit
+EOF
+}
+
+# Parse args (only --help supported)
+for arg in "$@"; do
+  case "$arg" in
+    --help|-h) usage; exit 0 ;;
+    -*) log_error "Unknown option: $arg"; usage; exit 2 ;;
+    *) log_error "Unknown parameter: $arg"; usage; exit 2 ;;
+  esac
+done
+
 log_step "Scanning Applications and computing last-used times..."
 
 now_epoch=$(date +%s)

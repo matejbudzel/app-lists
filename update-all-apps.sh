@@ -5,8 +5,29 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/_common.sh"
 
+# Help/usage
+usage() {
+  cat <<'EOF'
+Usage: update-all-apps.sh [options] [--types LIST|LIST]
+
+Update/upgrade system-wide packages and apps for selected types.
+
+Options:
+  --types LIST     Comma-separated types, or positional CSV. Types:
+                   brew, brew-formulae, brew-casks, appstore, npm, yarn, pnpm, pip
+  --help, -h       Show this help and exit
+EOF
+}
+
 # Accept optional type filtering
 # --types LIST or positional LIST (comma-separated), e.g. "npm,yarn,brew-casks"
+for arg in "$@"; do
+  case "$arg" in
+    --help|-h) usage; exit 0 ;;
+    --types|--types=*) : ;;
+    -*) log_error "Unknown option: $arg"; usage; exit 2 ;;
+  esac
+done
 types_parse_args "$@"
 
 log_step "Starting system-wide package updates..."
