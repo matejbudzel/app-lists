@@ -79,8 +79,10 @@ while IFS= read -r -d '' app; do
   printf "%s\t%s\n" "$ts" "$app" >>"$out_index"
 done < <(find /Applications "$HOME/Applications" -maxdepth 1 -type d -name "*.app" -print0 2>/dev/null || true)
 
-# Header
-printf "%s\t%s\t%s\t%s\n" "REL" "LAST_USED" "NAME" "PATH"
+# Preprocess rows to compute widths and allow aligned printing
+out_rows=$(mktemp)
+max_rel=3   # len(REL)
+max_name=4  # len(NAME)
 
 # Sort by epoch desc; -1 (never) naturally goes to the bottom
 while IFS=$'\t' read -r ts app; do
@@ -89,12 +91,35 @@ while IFS=$'\t' read -r ts app; do
     rel=$(format_relative "$diff")
     abs=$(date -r "$ts" "+%Y-%m-%d %H:%M")
   else
+    diff=$((315360000)) # large number
     rel="never"
     abs="-"
   fi
   name=$(basename "$app")
-  printf "%s\t%s\t%s\t%s\n" "$rel" "$abs" "$name" "$app"
+  # Track max widths (no color codes)
+  (( ${#rel} > max_rel )) && max_rel=${#rel}
+  (( ${#name} > max_name )) && max_name=${#name}
+  printf "%s\t%s\t%s\t%s\t%s\n" "$rel" "$abs" "$name" "$app" "$ts" >>"$out_rows"
 # sort numerically on first field, reverse (newest first)
 done < <(sort -t $'\t' -k1,1nr "$out_index")
+
+# Header (bold) with alignment
+printf "%s%-*s  %-*s  %-*s  %s%s\n" "${_BOLD:-}" "$max_rel" "REL" 16 "LAST_USED" "$max_name" "NAME" "PATH" "${_RESET:-}"
+
+# Print aligned rows with coloring
+while IFS=$'\t' read -r rel abs name app ts; do
+  prefix=""; suffix=""
+  if [[ "$ts" -lt 0 ]]; then
+    prefix="${_RED:-}"; suffix="${_RESET:-}"
+  else
+    diff=$(( now_epoch - ts ))
+    if (( diff >= 2592000 )); then
+      prefix="${_YELLOW:-}"; suffix="${_RESET:-}"
+    fi
+  fi
+  printf "%s%-*s  %-*s  %-*s  %s%s\n" "$prefix" "$max_rel" "$rel" 16 "$abs" "$max_name" "$name" "$app" "$suffix"
+done < "$out_rows"
+
+rm -f "$out_rows"
 
 log_success "Done."
