@@ -132,7 +132,19 @@ if [ -f "$OUTDIR/brew-casks.txt" ]; then
   else
     tmp_missing=$(mktemp)
     comm -23 "$tmp_want" "$tmp_have" > "$tmp_missing"
-    if [ -s "$tmp_missing" ]; then xargs -n1 brew install --cask < "$tmp_missing"; fi
+    if [ -s "$tmp_missing" ]; then
+      tmp_cask_log_dir="$(mktemp -d 2>/dev/null || mktemp -d -t casklogs)"
+      while IFS= read -r cask; do
+        [ -z "$cask" ] && continue
+        token="${cask##*/}"
+        log_step "Installing cask $cask (logs: $tmp_cask_log_dir/$token.log)"
+        if ! brew install --cask "$cask" >"$tmp_cask_log_dir/$token.log" 2>&1; then
+          log_warn "$cask: install failed (continuing)"
+        else
+          log_success "Installed $cask"
+        fi
+      done < "$tmp_missing"
+    fi
     rm -f "$tmp_missing"
   fi
 
@@ -232,7 +244,7 @@ if [ -f "$OUTDIR/pip-user.txt" ]; then
         log_info "Would install from: $OUTDIR/pip-user.txt"
       else
         # Uninstall all user packages
-        $PIP_CMD freeze --user | sed -e 's/==.*$//' | xargs -n1 $PIP_CMD uninstall -y --user || true
+        $PIP_CMD freeze --user | sed -e 's/==.*$//' | xargs -n1 $PIP_CMD uninstall -y || true
         $PIP_CMD install --user -r "$OUTDIR/pip-user.txt"
       fi
     else
@@ -262,7 +274,7 @@ if [ -f "$OUTDIR/pip-user.txt" ]; then
       else
         tmp_extra=$(mktemp)
         comm -23 "$tmp_have" "$tmp_want" > "$tmp_extra"
-        if [ -s "$tmp_extra" ]; then xargs -n1 $PIP_CMD uninstall -y --user < "$tmp_extra" || true; fi
+        if [ -s "$tmp_extra" ]; then xargs -n1 $PIP_CMD uninstall -y < "$tmp_extra" || true; fi
         rm -f "$tmp_extra"
       fi
       rm -f "$tmp_want" "$tmp_have"
