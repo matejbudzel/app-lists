@@ -378,37 +378,40 @@ if has_type pip && [ -f "$OUTDIR/pip-user.txt" ]; then
       fi
     else
       log_step "Syncing user pip packages (prune extras, install missing) via $PIP_CMD ..."
-      tmp_want=$(mktemp); tmp_have=$(mktemp)
+      tmp_want=$(mktemp); tmp_have_top=$(mktemp); tmp_have_all=$(mktemp)
       awk -F'==' 'NF{print $1}' "$OUTDIR/pip-user.txt" | _strip_list > "$tmp_want"
-      # installed top-level user packages
-      if $PIP_CMD list --user --not-required --format=json > "$tmp_have.json" 2>/dev/null && command -v jq &> /dev/null; then
-        jq -r '.[].name' "$tmp_have.json" | _strip_list > "$tmp_have" && rm -f "$tmp_have.json"
-      elif $PIP_CMD list --user --not-required --format=freeze > "$tmp_have" 2>/dev/null; then
-        sed -e 's/==.*$//' "$tmp_have" | _strip_list > "$tmp_have.names" && mv "$tmp_have.names" "$tmp_have"
+      # installed top-level user packages (not-required)
+      if $PIP_CMD list --user --not-required --format=json > "$tmp_have_top.json" 2>/dev/null && command -v jq &> /dev/null; then
+        jq -r '.[].name' "$tmp_have_top.json" | _strip_list > "$tmp_have_top" && rm -f "$tmp_have_top.json"
+      elif $PIP_CMD list --user --not-required --format=freeze > "$tmp_have_top" 2>/dev/null; then
+        sed -e 's/==.*$//' "$tmp_have_top" | _strip_list > "$tmp_have_top.names" && mv "$tmp_have_top.names" "$tmp_have_top"
       else
-        $PIP_CMD list --user --format=freeze 2>/dev/null | sed -e 's/==.*$//' | _strip_list > "$tmp_have"
+        # Fallback if --not-required unsupported: approximate using full list below
+        : > "$tmp_have_top"
       fi
-      # Install missing
+      # installed user packages (all)
+      $PIP_CMD list --user --format=freeze 2>/dev/null | sed -e 's/==.*$//' | _strip_list > "$tmp_have_all"
+      # Install missing (relative to all user-installed)
       if [ "$DRYRUN" = "1" ]; then
-        log_info "Would install pip user packages:"; comm -23 "$tmp_want" "$tmp_have" | sed 's/^/- /'
+        log_info "Would install pip user packages:"; comm -23 "$tmp_want" "$tmp_have_all" | sed 's/^/- /'
       else
         tmp_missing=$(mktemp)
-        comm -23 "$tmp_want" "$tmp_have" > "$tmp_missing"
-        if [ -s "$tmp_missing" ]; then xargs -n1 $PIP_CMD install --user < "$tmp_missing" || true; fi
+        comm -23 "$tmp_want" "$tmp_have_all" > "$tmp_missing"
+        if [ -s "$tmp_missing" ]; then xargs -n1 $PIP_CMD install --user --force-reinstall < "$tmp_missing" || true; fi
         rm -f "$tmp_missing"
       fi
-      # Uninstall extras (only when requested)
+      # Uninstall extras (only when requested), considering only top-level user pkgs
       if [ "$PRUNE_EXTRAS" = "1" ]; then
         if [ "$DRYRUN" = "1" ]; then
-          log_info "Would uninstall extra pip user packages:"; comm -23 "$tmp_have" "$tmp_want" | sed 's/^/- /'
+          log_info "Would uninstall extra pip user packages:"; comm -23 "$tmp_have_top" "$tmp_want" | sed 's/^/- /'
         else
           tmp_extra=$(mktemp)
-          comm -23 "$tmp_have" "$tmp_want" > "$tmp_extra"
+          comm -23 "$tmp_have_top" "$tmp_want" > "$tmp_extra"
           if [ -s "$tmp_extra" ]; then xargs -n1 $PIP_CMD uninstall -y < "$tmp_extra" || true; fi
           rm -f "$tmp_extra"
         fi
       fi
-      rm -f "$tmp_want" "$tmp_have"
+      rm -f "$tmp_want" "$tmp_have_top" "$tmp_have_all"
     fi
   fi
 fi
