@@ -168,12 +168,17 @@ if (has_type brew || has_type brew-formulae) && [ -f "$OUTDIR/brew-formulae.txt"
       log_info "Would install formulae:"; comm -23 "$tmp_want" "$tmp_installed" | sed 's/^/- /'
     else
       tmp_missing=$(mktemp)
-      comm -23 "$tmp_want" "$tmp_installed" > "$tmp_missing"
+      comm -23 "$tmp_want" "$tmp_leaves" > "$tmp_missing"
       if [ -s "$tmp_missing" ]; then
         while IFS= read -r formula; do
           [ -z "$formula" ] && continue
-          log_step "Installing formula $formula"
-          brew install "$formula" || log_warn "$formula: install failed (continuing)"
+          if grep -Fxq "$formula" "$tmp_installed"; then
+            log_step "Reinstalling formula $formula to mark as explicit"
+            brew reinstall "$formula" || log_warn "$formula: reinstall failed (continuing)"
+          else
+            log_step "Installing formula $formula"
+            brew install "$formula" || log_warn "$formula: install failed (continuing)"
+          fi
         done < "$tmp_missing"
       fi
       rm -f "$tmp_missing"
@@ -253,7 +258,20 @@ if has_type appstore && [ -f "$OUTDIR/appstore-apps.txt" ] && command -v mas &> 
     rm -f "$tmp_missing"
   fi
   if [ "$PRUNE_EXTRAS" = "1" ]; then
-    log_warn "Pruning MAS extras is not supported; skipping"
+    if [ "$DRYRUN" = "1" ]; then
+      log_info "Would uninstall extra MAS apps:"; comm -23 "$tmp_have" "$tmp_want" | sed 's/^/- /'
+    else
+      tmp_extra=$(mktemp)
+      comm -23 "$tmp_have" "$tmp_want" > "$tmp_extra"
+      if [ -s "$tmp_extra" ]; then
+        while IFS= read -r appid; do
+          [ -z "$appid" ] && continue
+          log_step "Uninstalling MAS app $appid"
+          mas uninstall "$appid" || log_warn "$appid: uninstall failed (continuing)"
+        done < "$tmp_extra"
+      fi
+      rm -f "$tmp_extra"
+    fi
   fi
   rm -f "$tmp_want" "$tmp_have"
 fi

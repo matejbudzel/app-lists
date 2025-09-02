@@ -79,7 +79,7 @@ Use `--types` to select a subset, e.g. `--types brew-casks,npm`. You can also pa
 
 - macOS with Bash
 - Homebrew for `brew-*` sections
-- `mas` for App Store installs
+- `mas` for App Store installs (run with sudo for install/uninstall)
 - Node managers as needed: `npm`, `yarn`, `pnpm`
 - Python `pip` or `pip3`
 - Optional: `jq` (improves accuracy/performance for a few operations)
