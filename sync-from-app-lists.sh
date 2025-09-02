@@ -234,7 +234,7 @@ if has_type npm && [ -f "$OUTDIR/npm-global.txt" ] && command -v npm &> /dev/nul
   log_step "Syncing global npm packages (install missing only) ..."
   tmp_want=$(mktemp); tmp_have=$(mktemp)
   _strip_list < "$OUTDIR/npm-global.txt" > "$tmp_want"
-  npm list -g --depth=0 2>/dev/null | tail -n +2 | awk '{print $2}' | sed 's/@.*//' | sort -u > "$tmp_have" || true
+  npm list -g --depth=0 2>/dev/null | tail -n +2 | awk '{print $2}' | sed -E 's/@[^@]+$//' | sort -u > "$tmp_have" || true
   if [ "$DRYRUN" = "1" ]; then
     log_info "Would install npm globals:"; comm -23 "$tmp_want" "$tmp_have" | sed 's/^/- /'
   else

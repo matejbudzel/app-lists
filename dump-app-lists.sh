@@ -90,7 +90,7 @@ if has_type npm && command -v npm &> /dev/null; then
     log_info "Exporting global npm packages..."
     tmp_npm="$OUTDIR/.npm-global.tmp"
     npm list -g --depth=0 2>/dev/null \
-      | tail -n +2 | awk '{print $2}' | sed 's/@.*//g' > "$tmp_npm" || true
+      | tail -n +2 | awk '{print $2}' | sed -E 's/@[^@]+$//' > "$tmp_npm" || true
     if [ -s "$tmp_npm" ]; then
         mv "$tmp_npm" "$OUTDIR/npm-global.txt"
     else
