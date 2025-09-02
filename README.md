@@ -22,6 +22,9 @@ Default list directory: `~/.applists` (override by exporting `OUTDIR`)
 - list-apps-last-used.sh
   - Show Applications with last-used times (relative and absolute), sorted most recent first.
   - Flags: `--help`.
+- print-brew-caveats.sh
+  - Print caveats for all installed Homebrew formulae and casks. Headers are highlighted; bodies are plain text.
+  - Requires `jq`.
 
 All scripts support `--help` and fail fast on unknown options.
 
