@@ -366,4 +366,28 @@ if has_type pip && [ -f "$OUTDIR/pip-user.txt" ]; then
   fi
 fi
 
+# --- Manual Apps (report-only) ----------------------------------------------
+if has_type manual-apps && [ -f "$OUTDIR/manual-apps.txt" ]; then
+  log_step "Checking manual apps (not managed by Brew/MAS) ..."
+  tmp_want=$(mktemp)
+  _strip_list < "$OUTDIR/manual-apps.txt" > "$tmp_want"
+  tmp_missing=$(mktemp)
+  while IFS= read -r app; do
+    [ -z "$app" ] && continue
+    case "$app" in \#*) continue;; esac
+    if [ -e "/Applications/$app" ] || [ -e "$HOME/Applications/$app" ]; then
+      :
+    else
+      echo "$app" >> "$tmp_missing"
+    fi
+  done < "$tmp_want"
+  if [ -s "$tmp_missing" ]; then
+    # Print just the app names (no prefixes), one per line
+    cat "$tmp_missing"
+  else
+    log_success "All manual apps from list are already installed."
+  fi
+  rm -f "$tmp_want" "$tmp_missing"
+fi
+
 log_success "Sync complete."
