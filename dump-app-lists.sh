@@ -104,7 +104,8 @@ if has_type yarn && command -v yarn &> /dev/null; then
     log_info "Exporting global Yarn packages..."
     tmp_yarn="$OUTDIR/.yarn-global.tmp"
     yarn global list --depth=0 2>/dev/null \
-      | awk '/info "/{gsub(/info "/,""); gsub(/".*/,""); print}' > "$tmp_yarn" || true
+      | awk '/info "/{gsub(/info "/,""); gsub(/".*/,""); print}' \
+      | sed -E 's/@[^@]+$//' > "$tmp_yarn" || true
     if [ -s "$tmp_yarn" ]; then
         mv "$tmp_yarn" "$OUTDIR/yarn-global.txt"
     else
