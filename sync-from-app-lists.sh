@@ -4,9 +4,11 @@
 # - Installs missing items from lists
 # - Prunes extras (where supported)
 # Options:
-#   --dry-run | -n          Show planned actions only, do not change system
-#   --recreate-explicit     For Brew formulae and pip user packages, fully
-#                           recreate explicit set (uninstall then install list)
+#   --dry-run | -n           Show planned actions only, do not change system
+#   --prune-extras           Also uninstall items not listed (for selected types)
+#   --recreate-explicit      Only for Brew formulae and pip user packages:
+#                            uninstall everything in that type first, then
+#                            install exactly from lists
 
 set -euo pipefail
 
@@ -16,10 +18,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 DRYRUN=0
 RECREATE_EXPLICIT=0
+PRUNE_EXTRAS=0
 for arg in "$@"; do
   case "$arg" in
     --dry-run|-n) DRYRUN=1 ;;
     --recreate-explicit) RECREATE_EXPLICIT=1 ;;
+    --prune-extras) PRUNE_EXTRAS=1 ;;
   esac
 done
 
@@ -49,7 +53,11 @@ if has_type brew || has_type brew-taps || has_type brew-formulae || has_type bre
       /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
     fi
   fi
-  [ "$DRYRUN" = "1" ] || brew update
+  if [ "$DRYRUN" = "1" ]; then
+    :
+  else
+    brew update || log_warn "brew update failed (continuing)"
+  fi
 fi
 
 # Taps: add missing (do not prune by default)
@@ -70,6 +78,22 @@ if (has_type brew || has_type brew-taps) && [ -f "$OUTDIR/brew-taps.txt" ] && [ 
       fi
     fi
   done < "$tmp_want"
+  if [ "$PRUNE_EXTRAS" = "1" ]; then
+    if [ "$DRYRUN" = "1" ]; then
+      log_info "Would untap extra taps:"; comm -23 "$tmp_have" "$tmp_want" | sed 's/^/- /'
+    else
+      tmp_extra=$(mktemp)
+      comm -23 "$tmp_have" "$tmp_want" > "$tmp_extra"
+      if [ -s "$tmp_extra" ]; then
+        while IFS= read -r etap; do
+          [ -z "$etap" ] && continue
+          log_step "Untapping $etap"
+          brew untap "$etap" || log_warn "Failed to untap $etap (continuing)"
+        done < "$tmp_extra"
+      fi
+      rm -f "$tmp_extra"
+    fi
+  fi
   rm -f "$tmp_want" "$tmp_have"
 fi
 
@@ -91,11 +115,20 @@ if (has_type brew || has_type brew-formulae) && [ -f "$OUTDIR/brew-formulae.txt"
         new_leaves=$(brew leaves --full-name 2>/dev/null || brew leaves || true)
         [ "$new_leaves" = "$leaves" ] && break
       done
-      xargs brew install < "$OUTDIR/brew-formulae.txt"
+      # Install each formula from list with per-item logging
+      while IFS= read -r formula; do
+        [ -z "$formula" ] && continue
+        log_step "Installing formula $formula"
+        brew install "$formula" || log_warn "$formula: install failed (continuing)"
+      done < "$OUTDIR/brew-formulae.txt"
       brew autoremove || true
     fi
   else
-    log_step "Syncing Brew formulae (prune extra leaves, install missing) ..."
+    if [ "$PRUNE_EXTRAS" = "1" ]; then
+      log_step "Syncing Brew formulae (prune extra leaves, install missing) ..."
+    else
+      log_step "Syncing Brew formulae (install missing only) ..."
+    fi
     tmp_want=$(mktemp); tmp_leaves=$(mktemp); tmp_installed=$(mktemp)
     _strip_list < "$OUTDIR/brew-formulae.txt" > "$tmp_want"
     brew leaves --full-name 2>/dev/null | sort -u > "$tmp_leaves" || brew leaves | sort -u > "$tmp_leaves" || true
@@ -107,26 +140,34 @@ if (has_type brew || has_type brew-formulae) && [ -f "$OUTDIR/brew-formulae.txt"
     else
       tmp_missing=$(mktemp)
       comm -23 "$tmp_want" "$tmp_installed" > "$tmp_missing"
-      if [ -s "$tmp_missing" ]; then xargs brew install < "$tmp_missing"; fi
+      if [ -s "$tmp_missing" ]; then
+        while IFS= read -r formula; do
+          [ -z "$formula" ] && continue
+          log_step "Installing formula $formula"
+          brew install "$formula" || log_warn "$formula: install failed (continuing)"
+        done < "$tmp_missing"
+      fi
       rm -f "$tmp_missing"
     fi
 
-    # Prune extra leaves not in wanted list
-    if [ "$DRYRUN" = "1" ]; then
-      log_info "Would uninstall extra leaf formulae:"; comm -23 "$tmp_leaves" "$tmp_want" | sed 's/^/- /'
-      log_info "Would run: brew autoremove"
-    else
-      tmp_extra=$(mktemp)
-      comm -23 "$tmp_leaves" "$tmp_want" > "$tmp_extra"
-      if [ -s "$tmp_extra" ]; then xargs brew uninstall < "$tmp_extra" || true; fi
-      rm -f "$tmp_extra"
-      brew autoremove || true
+    # Prune extra leaves not in wanted list (only if requested)
+    if [ "$PRUNE_EXTRAS" = "1" ]; then
+      if [ "$DRYRUN" = "1" ]; then
+        log_info "Would uninstall extra leaf formulae:"; comm -23 "$tmp_leaves" "$tmp_want" | sed 's/^/- /'
+        log_info "Would run: brew autoremove"
+      else
+        tmp_extra=$(mktemp)
+        comm -23 "$tmp_leaves" "$tmp_want" > "$tmp_extra"
+        if [ -s "$tmp_extra" ]; then xargs brew uninstall < "$tmp_extra" || true; fi
+        rm -f "$tmp_extra"
+        brew autoremove || true
+      fi
     fi
     rm -f "$tmp_want" "$tmp_leaves" "$tmp_installed"
   fi
 fi
 
-# Casks: install missing, uninstall extras
+# Casks: install missing by default; support prune extras
 if (has_type brew || has_type brew-casks) && [ -f "$OUTDIR/brew-casks.txt" ]; then
   log_step "Syncing Brew casks ..."
   tmp_want=$(mktemp); tmp_have=$(mktemp)
@@ -154,15 +195,16 @@ if (has_type brew || has_type brew-casks) && [ -f "$OUTDIR/brew-casks.txt" ]; th
     fi
     rm -f "$tmp_missing"
   fi
-
-  # Uninstall extras
-  if [ "$DRYRUN" = "1" ]; then
-    log_info "Would uninstall extra casks:"; comm -23 "$tmp_have" "$tmp_want" | sed 's/^/- /'
-  else
-    tmp_extra=$(mktemp)
-    comm -23 "$tmp_have" "$tmp_want" > "$tmp_extra"
-    if [ -s "$tmp_extra" ]; then xargs -n1 brew uninstall --cask < "$tmp_extra" || true; fi
-    rm -f "$tmp_extra"
+  # Uninstall extras only when requested
+  if [ "$PRUNE_EXTRAS" = "1" ]; then
+    if [ "$DRYRUN" = "1" ]; then
+      log_info "Would uninstall extra casks:"; comm -23 "$tmp_have" "$tmp_want" | sed 's/^/- /'
+    else
+      tmp_extra=$(mktemp)
+      comm -23 "$tmp_have" "$tmp_want" > "$tmp_extra"
+      if [ -s "$tmp_extra" ]; then xargs -n1 brew uninstall --cask < "$tmp_extra" || true; fi
+      rm -f "$tmp_extra"
+    fi
   fi
   rm -f "$tmp_want" "$tmp_have"
 fi
@@ -178,8 +220,11 @@ if has_type appstore && [ -f "$OUTDIR/appstore-apps.txt" ] && command -v mas &> 
   else
     tmp_missing=$(mktemp)
     comm -23 "$tmp_want" "$tmp_have" > "$tmp_missing"
-    if [ -s "$tmp_missing" ]; then xargs mas install < "$tmp_missing"; fi
+    if [ -s "$tmp_missing" ]; then xargs -n1 mas install < "$tmp_missing" || true; fi
     rm -f "$tmp_missing"
+  fi
+  if [ "$PRUNE_EXTRAS" = "1" ]; then
+    log_warn "Pruning MAS extras is not supported; skipping"
   fi
   rm -f "$tmp_want" "$tmp_have"
 fi
@@ -195,8 +240,18 @@ if has_type npm && [ -f "$OUTDIR/npm-global.txt" ] && command -v npm &> /dev/nul
   else
     tmp_missing=$(mktemp)
     comm -23 "$tmp_want" "$tmp_have" > "$tmp_missing"
-    if [ -s "$tmp_missing" ]; then xargs npm install -g < "$tmp_missing"; fi
+    if [ -s "$tmp_missing" ]; then xargs npm install -g < "$tmp_missing" || true; fi
     rm -f "$tmp_missing"
+  fi
+  if [ "$PRUNE_EXTRAS" = "1" ]; then
+    if [ "$DRYRUN" = "1" ]; then
+      log_info "Would uninstall extra npm globals:"; comm -23 "$tmp_have" "$tmp_want" | sed 's/^/- /'
+    else
+      tmp_extra=$(mktemp)
+      comm -23 "$tmp_have" "$tmp_want" > "$tmp_extra"
+      if [ -s "$tmp_extra" ]; then xargs -n1 npm uninstall -g < "$tmp_extra" || true; fi
+      rm -f "$tmp_extra"
+    fi
   fi
   rm -f "$tmp_want" "$tmp_have"
 fi
@@ -206,14 +261,24 @@ if has_type yarn && [ -f "$OUTDIR/yarn-global.txt" ] && command -v yarn &> /dev/
   log_step "Syncing global Yarn packages (install missing only) ..."
   tmp_want=$(mktemp); tmp_have=$(mktemp)
   _strip_list < "$OUTDIR/yarn-global.txt" > "$tmp_want"
-  yarn global list --depth=0 2>/dev/null | awk '/info "[^"]+"/{gsub(/.*info \"/,"",$0); gsub(/\".*/,"",$0); print}' | sort -u > "$tmp_have" || true
+  yarn global list --depth=0 2>/dev/null | awk '/info "[^"]+"/{gsub(/.*info \"/,"",$0); gsub(/\".*/,"",$0); print}' | sed -E 's/@[^@]+$//' | sort -u > "$tmp_have" || true
   if [ "$DRYRUN" = "1" ]; then
     log_info "Would install Yarn globals:"; comm -23 "$tmp_want" "$tmp_have" | sed 's/^/- /'
   else
     tmp_missing=$(mktemp)
     comm -23 "$tmp_want" "$tmp_have" > "$tmp_missing"
-    if [ -s "$tmp_missing" ]; then xargs yarn global add < "$tmp_missing"; fi
+    if [ -s "$tmp_missing" ]; then xargs yarn global add < "$tmp_missing" || true; fi
     rm -f "$tmp_missing"
+  fi
+  if [ "$PRUNE_EXTRAS" = "1" ]; then
+    if [ "$DRYRUN" = "1" ]; then
+      log_info "Would uninstall extra Yarn globals:"; comm -23 "$tmp_have" "$tmp_want" | sed 's/^/- /'
+    else
+      tmp_extra=$(mktemp)
+      comm -23 "$tmp_have" "$tmp_want" > "$tmp_extra"
+      if [ -s "$tmp_extra" ]; then xargs -n1 yarn global remove < "$tmp_extra" || true; fi
+      rm -f "$tmp_extra"
+    fi
   fi
   rm -f "$tmp_want" "$tmp_have"
 fi
@@ -234,8 +299,18 @@ if has_type pnpm && [ -f "$OUTDIR/pnpm-global.txt" ] && command -v pnpm &> /dev/
   else
     tmp_missing=$(mktemp)
     comm -23 "$tmp_want" "$tmp_have" > "$tmp_missing"
-    if [ -s "$tmp_missing" ]; then xargs pnpm add -g < "$tmp_missing"; fi
+    if [ -s "$tmp_missing" ]; then xargs pnpm add -g < "$tmp_missing" || true; fi
     rm -f "$tmp_missing"
+  fi
+  if [ "$PRUNE_EXTRAS" = "1" ]; then
+    if [ "$DRYRUN" = "1" ]; then
+      log_info "Would uninstall extra pnpm globals:"; comm -23 "$tmp_have" "$tmp_want" | sed 's/^/- /'
+    else
+      tmp_extra=$(mktemp)
+      comm -23 "$tmp_have" "$tmp_want" > "$tmp_extra"
+      if [ -s "$tmp_extra" ]; then xargs -n1 pnpm remove -g < "$tmp_extra" || true; fi
+      rm -f "$tmp_extra"
+    fi
   fi
   rm -f "$tmp_want" "$tmp_have"
 fi
@@ -252,7 +327,7 @@ if has_type pip && [ -f "$OUTDIR/pip-user.txt" ]; then
       else
         # Uninstall all user packages
         $PIP_CMD freeze --user | sed -e 's/==.*$//' | xargs -n1 $PIP_CMD uninstall -y || true
-        $PIP_CMD install --user -r "$OUTDIR/pip-user.txt"
+        $PIP_CMD install --user -r "$OUTDIR/pip-user.txt" || true
       fi
     else
       log_step "Syncing user pip packages (prune extras, install missing) via $PIP_CMD ..."
@@ -272,17 +347,19 @@ if has_type pip && [ -f "$OUTDIR/pip-user.txt" ]; then
       else
         tmp_missing=$(mktemp)
         comm -23 "$tmp_want" "$tmp_have" > "$tmp_missing"
-        if [ -s "$tmp_missing" ]; then xargs -n1 $PIP_CMD install --user < "$tmp_missing"; fi
+        if [ -s "$tmp_missing" ]; then xargs -n1 $PIP_CMD install --user < "$tmp_missing" || true; fi
         rm -f "$tmp_missing"
       fi
-      # Uninstall extras
-      if [ "$DRYRUN" = "1" ]; then
-        log_info "Would uninstall extra pip user packages:"; comm -23 "$tmp_have" "$tmp_want" | sed 's/^/- /'
-      else
-        tmp_extra=$(mktemp)
-        comm -23 "$tmp_have" "$tmp_want" > "$tmp_extra"
-        if [ -s "$tmp_extra" ]; then xargs -n1 $PIP_CMD uninstall -y < "$tmp_extra" || true; fi
-        rm -f "$tmp_extra"
+      # Uninstall extras (only when requested)
+      if [ "$PRUNE_EXTRAS" = "1" ]; then
+        if [ "$DRYRUN" = "1" ]; then
+          log_info "Would uninstall extra pip user packages:"; comm -23 "$tmp_have" "$tmp_want" | sed 's/^/- /'
+        else
+          tmp_extra=$(mktemp)
+          comm -23 "$tmp_have" "$tmp_want" > "$tmp_extra"
+          if [ -s "$tmp_extra" ]; then xargs -n1 $PIP_CMD uninstall -y < "$tmp_extra" || true; fi
+          rm -f "$tmp_extra"
+        fi
       fi
       rm -f "$tmp_want" "$tmp_have"
     fi
