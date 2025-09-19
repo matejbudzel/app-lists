@@ -15,6 +15,7 @@ Update/upgrade system-wide packages and apps for selected types.
 Options:
   --types LIST     Comma-separated types, or positional CSV. Types:
                    brew, brew-formulae, brew-casks, appstore, npm, yarn, pnpm, pip
+  --force          Skip interactive confirmations
   --help, -h       Show this help and exit
 EOF
 }
@@ -25,12 +26,17 @@ for arg in "$@"; do
   case "$arg" in
     --help|-h) usage; exit 0 ;;
     --types|--types=*) : ;;
+    --force) FORCE=1 ;;
     -*) log_error "Unknown option: $arg"; usage; exit 2 ;;
   esac
 done
 types_parse_args "$@"
 
-log_step "Starting system-wide package updates..."
+# Determine types label and confirm
+SELECTED_TYPES=$(selected_types_label "brew, brew-formulae, brew-casks, appstore, npm, yarn, pnpm, pip")
+confirm_continue "$SELECTED_TYPES" "$FORCE" || exit 1
+
+log_step "Starting system-wide package updates for: ${SELECTED_TYPES}"
 
 # homebrew packages and casks
 if has_type brew || has_type brew-formulae || has_type brew-casks; then

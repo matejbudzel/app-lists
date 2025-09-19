@@ -73,6 +73,9 @@ arc_extensions_list_ids() {
 # Global TYPES variable (empty means all types enabled)
 : "${TYPES:=}"
 
+# Global FORCE flag to bypass confirmations (scripts can set via --force)
+: "${FORCE:=0}"
+
 types_parse_args() {
   local NEXT_TYPES=0
   for arg in "$@"; do
@@ -93,5 +96,61 @@ has_type() {
     *",${key}," ) return 0 ;;
     * ) return 1 ;;
   esac
+}
+
+# Return a human-friendly label of selected types. Pass the full list string for the script.
+# Usage: label=$(selected_types_label "brew, brew-formulae, ...")
+selected_types_label() {
+  local all_list="$1"
+  if [ -z "${TYPES:-}" ]; then
+    printf "all types (%s)" "$all_list"
+  else
+    printf "%s" "$TYPES"
+  fi
+}
+
+# Generic confirmation that shows selected types. Returns 0 to proceed, 1 to abort.
+# Usage: confirm_continue "$label" "$FORCE" || exit 1
+confirm_continue() {
+  local selected_label="$1"
+  local force_flag="${2:-0}"
+  if [ "$force_flag" = "1" ]; then
+    return 0
+  fi
+  if [ -t 0 ]; then
+    printf "This will run for: %s\n" "$selected_label"
+    read -r -p "Do you want to continue? [y/N]: " _ans
+    case "$_ans" in
+      [Yy]|[Yy][Ee][Ss]) return 0 ;;
+      *) log_error "Aborted by user."; return 1 ;;
+    esac
+  else
+    log_info "Non-interactive session; proceeding without confirmation."
+    return 0
+  fi
+}
+
+# Confirm removal of directory contents if non-empty. Returns 0 to proceed, 1 to abort.
+# Usage: confirm_delete_dir_contents "$DIR" "$FORCE" || exit 1
+confirm_delete_dir_contents() {
+  local dir="$1"
+  local force_flag="${2:-0}"
+  if [ "$force_flag" = "1" ]; then
+    return 0
+  fi
+  [ -d "$dir" ] || return 0
+  if [ -z "$(ls -A "$dir" 2>/dev/null)" ]; then
+    return 0
+  fi
+  if [ -t 0 ]; then
+    read -r -p "Directory '$dir' is not empty. Remove its contents before proceeding? [y/N]: " _ans
+    case "$_ans" in
+      [Yy]|[Yy][Ee][Ss]) return 0 ;;
+      *) log_error "Aborted by user."; return 1 ;;
+    esac
+  else
+    log_error "Directory '$dir' is not empty and confirmation is required. Re-run with --force to proceed."
+    return 1
+  fi
 }
 

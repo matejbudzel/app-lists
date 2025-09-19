@@ -7,12 +7,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Help/usage
 usage() {
   cat <<'EOF'
-Usage: dump-app-lists.sh [--keep-existing|-k] [--types LIST|LIST]
+Usage: dump-app-lists.sh [--remove-existing] [--force] [--outdir DIR] [--types LIST|LIST]
 
 Export the current system state into ~/.applists files.
 
 Options:
-  --keep-existing, -k   Do not clean OUTDIR before exporting (default: clean)
+  --remove-existing     Remove OUTDIR contents before exporting (default: keep)
+  --force               Skip interactive confirmations
+  --outdir DIR          Output directory (defaults to $HOME/.applists or OUTDIR env)
+                        If both OUTDIR env and --outdir are set with different values, an error is raised
   --types LIST          Comma-separated types to export (or positional CSV)
                         Types: brew, brew-taps, brew-formulae, brew-casks,
                                appstore, manual-apps, arc-extensions,
@@ -22,23 +25,34 @@ Options:
 Examples:
   dump-app-lists.sh
   dump-app-lists.sh --types npm,yarn,brew-casks
-  dump-app-lists.sh -k manual-apps
+  dump-app-lists.sh --remove-existing --force manual-apps
+  OUTDIR=~/.applists dump-app-lists.sh --outdir ~/.applists   # OUTDIR and --outdir must match or error
 EOF
 }
 
 # Options:
-#   --keep-existing | -k   Do not clean OUTDIR before exporting
+#   --remove-existing      Remove OUTDIR contents before exporting (confirmation unless --force)
 #   --types LIST           Comma-separated list of sections to export
 #                          e.g. "brew-casks,appstore,npm,yarn,pnpm,pip,manual-apps,brew-taps,brew-formulae"
 
-# Default: clean OUTDIR before dumping
-CLEAN_OUTDIR=1
+# Default: keep OUTDIR contents
+CLEAN_OUTDIR=0
+OUTDIR_CLI=""
+NEXT_OUTDIR=0
 for arg in "$@"; do
   case "$arg" in
-    --keep-existing|-k) CLEAN_OUTDIR=0 ;;
+    --remove-existing) CLEAN_OUTDIR=1 ;;
+    --force) FORCE=1 ;;
+    --outdir=*) OUTDIR_CLI="${arg#*=}" ;;
+    --outdir) NEXT_OUTDIR=1 ;;
     --help|-h) usage; exit 0 ;;
     --types|--types=*) : ;;
     -*) log_error "Unknown option: $arg"; usage; exit 2 ;;
+    *)
+      if [ "$NEXT_OUTDIR" = "1" ]; then
+        OUTDIR_CLI="$arg"; NEXT_OUTDIR=0
+      fi
+      ;;
   esac
 done
 
@@ -46,6 +60,19 @@ done
 types_parse_args "$@"
 
 # has_type() provided by _common.sh; empty TYPES => all enabled.
+
+# Resolve OUTDIR from CLI vs env/default and detect conflicts
+if [ -n "${OUTDIR_CLI}" ]; then
+  if [ -n "${OUTDIR}" ] && [ "${OUTDIR}" != "${OUTDIR_CLI}" ]; then
+    log_error "Conflicting OUTDIR: env/default OUTDIR='${OUTDIR}' vs --outdir='${OUTDIR_CLI}'. Use only one."
+    exit 2
+  fi
+  OUTDIR="${OUTDIR_CLI}"
+fi
+
+# Print selected types and ask for confirmation
+SELECTED_TYPES=$(selected_types_label "brew, brew-taps, brew-formulae, brew-casks, appstore, manual-apps, arc-extensions, npm, yarn, pnpm, pip")
+confirm_continue "$SELECTED_TYPES" "$FORCE" || exit 1
 
 # Ensure output directory exists and is writable
 mkdir -p "$OUTDIR" || { log_error "Unable to create $OUTDIR"; exit 1; }
@@ -56,14 +83,17 @@ if ! touch "$OUTDIR/.write_test" 2>/dev/null; then
 fi
 rm -f "$OUTDIR/.write_test"
 
-# Clean OUTDIR unless disabled
+# Clean OUTDIR if requested (with confirmation unless --force)
 if [ "$CLEAN_OUTDIR" = "1" ]; then
     if [ -d "$OUTDIR" ] && [ "$OUTDIR" != "/" ]; then
+        confirm_delete_dir_contents "$OUTDIR" "$FORCE" || exit 1
         log_step "Cleaning $OUTDIR before export..."
         # Remove all items (including dotfiles) but not the directory itself
         find "$OUTDIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
     fi
 fi
+
+log_step "Starting export for: ${SELECTED_TYPES}"
 
 # --- Arc extensions ---
 if has_type arc-extensions; then
