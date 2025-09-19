@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Help/usage
 usage() {
   cat <<'EOF'
-Usage: update-all-apps.sh [options] [--types LIST|LIST]
+Usage: update-all-apps.sh [options] [--types LIST]
 
 Update/upgrade system-wide packages and apps for selected types.
 
@@ -20,8 +20,6 @@ Options:
 EOF
 }
 
-# Accept optional type filtering
-# --types LIST or positional LIST (comma-separated), e.g. "npm,yarn,brew-casks"
 for arg in "$@"; do
   case "$arg" in
     --help|-h) usage; exit 0 ;;

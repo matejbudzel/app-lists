@@ -30,29 +30,16 @@ Examples:
 EOF
 }
 
-# Options:
-#   --remove-existing      Remove OUTDIR contents before exporting (confirmation unless --force)
-#   --types LIST           Comma-separated list of sections to export
-#                          e.g. "brew-casks,appstore,npm,yarn,pnpm,pip,manual-apps,brew-taps,brew-formulae"
-
 # Default: keep OUTDIR contents
 CLEAN_OUTDIR=0
-OUTDIR_CLI=""
-NEXT_OUTDIR=0
 for arg in "$@"; do
   case "$arg" in
     --remove-existing) CLEAN_OUTDIR=1 ;;
     --force) FORCE=1 ;;
-    --outdir=*) OUTDIR_CLI="${arg#*=}" ;;
-    --outdir) NEXT_OUTDIR=1 ;;
+    --outdir|--outdir=*) : ;;
     --help|-h) usage; exit 0 ;;
     --types|--types=*) : ;;
     -*) log_error "Unknown option: $arg"; usage; exit 2 ;;
-    *)
-      if [ "$NEXT_OUTDIR" = "1" ]; then
-        OUTDIR_CLI="$arg"; NEXT_OUTDIR=0
-      fi
-      ;;
   esac
 done
 
@@ -62,13 +49,7 @@ types_parse_args "$@"
 # has_type() provided by _common.sh; empty TYPES => all enabled.
 
 # Resolve OUTDIR from CLI vs env/default and detect conflicts
-if [ -n "${OUTDIR_CLI}" ]; then
-  if [ -n "${OUTDIR}" ] && [ "${OUTDIR}" != "${OUTDIR_CLI}" ]; then
-    log_error "Conflicting OUTDIR: env/default OUTDIR='${OUTDIR}' vs --outdir='${OUTDIR_CLI}'. Use only one."
-    exit 2
-  fi
-  OUTDIR="${OUTDIR_CLI}"
-fi
+outdir_handle_args "$@"
 
 # Print selected types and ask for confirmation
 SELECTED_TYPES=$(selected_types_label "brew, brew-taps, brew-formulae, brew-casks, appstore, manual-apps, arc-extensions, npm, yarn, pnpm, pip")

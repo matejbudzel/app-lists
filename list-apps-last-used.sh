@@ -1,9 +1,5 @@
 #!/bin/bash
 
-# List apps in /Applications and ~/Applications with last used time (relative and absolute),
-# sorted by most recently used first. Apps never launched (per Spotlight) are shown at the end.
-# Note: Requires Spotlight metadata (mdls). If Spotlight is disabled, many apps will show as "never".
-
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -13,6 +13,39 @@ detect_pip_cmd() {
   fi
 }
 
+# Strip helper: remove comments and blank lines, trim whitespace, sort unique
+_strip_list() {
+  sed -e 's/^[[:space:]]*//;s/[[:space:]]*$//' -e '/^#/d' -e '/^$/d' | sort -u
+}
+
+
+# --- OUTDIR helpers ----------------------------------------------------------
+# Parse --outdir/--outdir= and resolve against OUTDIR env/default.
+# On conflict (both set and differ), prints error and exits 2.
+# Usage in scripts:
+#   outdir_handle_args "$@"   # sets global OUTDIR appropriately or exits on conflict
+outdir_handle_args() {
+  local OUTDIR_CLI="" NEXT_OUTDIR=0 arg
+  for arg in "$@"; do
+    case "$arg" in
+      --outdir=*) OUTDIR_CLI="${arg#*=}" ;;
+      --outdir) NEXT_OUTDIR=1 ;;
+      *)
+        if [ "$NEXT_OUTDIR" = "1" ]; then
+          OUTDIR_CLI="$arg"; NEXT_OUTDIR=0
+        fi
+        ;;
+    esac
+  done
+  if [ -n "$OUTDIR_CLI" ]; then
+    if [ -n "${OUTDIR:-}" ] && [ "${OUTDIR}" != "${OUTDIR_CLI}" ]; then
+      log_error "Conflicting OUTDIR: env/default OUTDIR='${OUTDIR}' vs --outdir='${OUTDIR_CLI}'. Use only one."
+      exit 2
+    fi
+    OUTDIR="$OUTDIR_CLI"
+  fi
+}
+
 # --- Pretty output helpers ----------------------------------------------------
 # Use tput for colors when stdout is a TTY; otherwise, no color.
 if [ -t 1 ] && command -v tput >/dev/null 2>&1; then
@@ -64,6 +97,7 @@ arc_extensions_list_ids() {
     | grep -E '^[a-z]{16,}$' \
     | sort -u || true
 }
+
 
 # --- Types filtering helpers -------------------------------------------------
 # Usage in scripts:

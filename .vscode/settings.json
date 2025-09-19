@@ -4,10 +4,14 @@
         "appstore",
         "casklogs",
         "DRYRUN",
+        "etap",
+        "extdir",
         "gsub",
         "mdls",
         "pkgs",
         "scriptable",
-        "untap"
+        "setaf",
+        "untap",
+        "Untapping"
     ]
 }
