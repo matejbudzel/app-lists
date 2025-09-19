@@ -108,6 +108,10 @@ Examples:
 - Python `pip` or `pip3`
 - Optional: `jq` (improves accuracy/performance for certain operations)
 
+## Disclaimer
+
+All of the code was vibe-coded, I am no shell expert 😅
+
 ## License
 
 See `LICENSE`.
