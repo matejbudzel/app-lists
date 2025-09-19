@@ -7,7 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Help/usage
 usage() {
   cat <<'EOF'
-Usage: dump-app-lists.sh [--remove-existing] [--force] [--outdir DIR] [--types LIST|LIST]
+Usage: dump-app-lists.sh [--remove-existing] [--force] [--outdir DIR] [--types LIST]
+   or: apps dump-lists [--remove-existing] [--force] [--outdir DIR] [--types LIST]
 
 Export the current system state into ~/.applists files.
 

@@ -9,6 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 usage() {
   cat <<'EOF'
 Usage: update-all-apps.sh [options] [--types LIST]
+   or: apps update-all [options] [--types LIST]
 
 Update/upgrade system-wide packages and apps for selected types.
 

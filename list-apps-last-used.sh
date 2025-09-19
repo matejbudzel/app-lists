@@ -9,6 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 usage() {
   cat <<'EOF'
 Usage: list-apps-last-used.sh [--help|-h]
+   or: apps list-last-used [--help|-h]
 
 List apps in /Applications and ~/Applications with last used time (relative and absolute),
 sorted by most recently used first. Apps never launched are shown at the end.

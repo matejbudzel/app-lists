@@ -10,6 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 usage() {
   cat <<'EOF'
 Usage: sync-from-app-lists.sh [options] [--outdir DIR] [--types LIST]
+   or: apps sync-from-lists [options] [--outdir DIR] [--types LIST]
 
 Sync machine state against lists in ~/.applists. By default installs missing
 items only. Use --prune-extras to also uninstall extras. Use --recreate-explicit

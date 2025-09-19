@@ -7,6 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 usage() {
   cat <<'EOF'
 Usage: print-brew-caveats.sh [--help|-h]
+   or: apps caveats [--help|-h]
 
 Print caveats for all installed Homebrew formulae and casks.
 
