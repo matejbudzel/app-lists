@@ -17,6 +17,9 @@ Usage: list-apps-last-used.sh [--help|-h]
 List apps in /Applications and ~/Applications with last used time (relative and absolute),
 sorted by most recently used first. Apps never launched are shown at the end.
 
+Determines last used time via Spotlight metadata (mdls kMDItemLastUsedDate).
+If Spotlight is disabled or the value is missing, an app is shown as "never".
+
 Options:
   --help, -h   Show this help and exit
 EOF
@@ -31,7 +34,7 @@ for arg in "$@"; do
   esac
 done
 
-log_step "Scanning Applications and computing last-used times..."
+log_step "Scanning Applications and computing last-used times (via Spotlight metadata)..."
 
 now_epoch=$(date +%s)
 
