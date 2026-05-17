@@ -141,7 +141,7 @@ type_available() {
   case "$key" in
     brew|brew-taps|brew-formulae|brew-casks) command -v brew >/dev/null 2>&1 ;;
     appstore) command -v mas >/dev/null 2>&1 ;;
-    manual-apps) return 0 ;;
+    manual-apps) [ "$(uname -s)" = "Darwin" ] ;;
     arc-extensions) return 0 ;;
     npm) command -v npm >/dev/null 2>&1 ;;
     yarn) command -v yarn >/dev/null 2>&1 ;;
@@ -230,4 +230,3 @@ confirm_delete_dir_contents() {
     return 1
   fi
 }
-
