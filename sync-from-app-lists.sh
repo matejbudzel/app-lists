@@ -19,7 +19,7 @@ only for Brew formulae and pip user packages to rebuild exactly from lists.
 Options:
   --dry-run, -n           Show planned actions only; do not change system
   --prune-extras          Also uninstall items not listed for supported types
-                          (brew taps/formulae/casks, appstore, npm, yarn, pnpm, pip).
+                          (brew taps/formulae/casks, appstore, npm, yarn, pnpm, pip, apt).
                           The arc-extensions and manual-apps types are report-only.
   --recreate-explicit     Only for Brew formulae and pip user packages
   --force                 Auto-confirm all prompts (potentially dangerous; be sure before using)
@@ -28,7 +28,7 @@ Options:
   --types LIST            Comma-separated types, or positional CSV
                           Types: brew, brew-taps, brew-formulae, brew-casks,
                                  appstore, manual-apps, arc-extensions,
-                                 npm, yarn, pnpm, pip
+                                 npm, yarn, pnpm, pip, apt
   --help, -h              Show this help and exit
 
 Examples:
@@ -64,11 +64,89 @@ types_parse_args "$@"
 # Resolve OUTDIR from CLI vs env/default and detect conflicts
 outdir_handle_args "$@"
 
+platform_name() {
+  case "$(uname -s)" in
+    Darwin) echo darwin ;;
+    Linux) echo linux ;;
+    *) echo unknown ;;
+  esac
+}
+
+is_brew_formula_installed() {
+  command -v brew >/dev/null 2>&1 && brew list --formula --full-name 2>/dev/null | grep -Fxq "$1"
+}
+
+is_npm_global_installed() {
+  command -v npm >/dev/null 2>&1 && npm list -g --depth=0 2>/dev/null | tail -n +2 | awk '{print $2}' | sed -E 's/@[^@]+$//' | grep -Fxq "$1"
+}
+
+process_package_rules() {
+  local rules_file="$OUTDIR/package-rules.txt"
+  [ -f "$rules_file" ] || return 0
+  local platform; platform=$(platform_name)
+  if [ "$platform" = "unknown" ]; then
+    log_warn "Unknown platform for package-rules.txt; skipping rules processing."
+    return 0
+  fi
+  log_step "Processing package-rules.txt for platform: $platform"
+  while IFS='|' read -r logical platform_rule source_type package_name; do
+    logical=$(printf "%s" "$logical" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    platform_rule=$(printf "%s" "$platform_rule" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    source_type=$(printf "%s" "$source_type" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    package_name=$(printf "%s" "$package_name" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    [ -z "$logical" ] && continue
+    [[ "$logical" == \#* ]] && continue
+    [ "$platform_rule" = "$platform" ] || continue
+    if ! has_type "$source_type"; then continue; fi
+    if ! type_available "$source_type"; then
+      log_warn "Rule '$logical' skipped: type '$source_type' is unavailable on this machine."
+      continue
+    fi
+    case "$source_type" in
+      brew-formulae)
+        local brew_name="" npm_name=""
+        brew_name=$(awk -F'|' 'tolower($2)~/'"$platform"'/ {gsub(/^[ 	]+|[ 	]+$/, "", $3); gsub(/^[ 	]+|[ 	]+$/, "", $4); if ($3=="brew-formulae") print $4}' "$rules_file" | head -n1)
+        npm_name=$(awk -F'|' 'tolower($2)~/'"$platform"'/ {gsub(/^[ 	]+|[ 	]+$/, "", $3); gsub(/^[ 	]+|[ 	]+$/, "", $4); if ($3=="npm") print $4}' "$rules_file" | head -n1)
+        if [ -n "$brew_name" ] && [ -n "$npm_name" ] && is_brew_formula_installed "$brew_name" && is_npm_global_installed "$npm_name"; then
+          log_warn "Rule '$logical': both brew and npm providers appear installed; leaving as-is."
+        fi
+        if is_brew_formula_installed "$package_name"; then continue; fi
+        if [ "$DRYRUN" = "1" ]; then
+          log_info "Would install (rule): brew formula $package_name"
+        else
+          if confirm_continue "Install rule package via brew-formulae: $package_name" "$FORCE"; then
+            brew install "$package_name" || log_warn "Rule install failed: brew formula $package_name"
+          fi
+        fi
+        ;;
+      npm)
+        local brew_name="" npm_name=""
+        brew_name=$(awk -F'|' 'tolower($2)~/'"$platform"'/ {gsub(/^[ 	]+|[ 	]+$/, "", $3); gsub(/^[ 	]+|[ 	]+$/, "", $4); if ($3=="brew-formulae") print $4}' "$rules_file" | head -n1)
+        npm_name=$(awk -F'|' 'tolower($2)~/'"$platform"'/ {gsub(/^[ 	]+|[ 	]+$/, "", $3); gsub(/^[ 	]+|[ 	]+$/, "", $4); if ($3=="npm") print $4}' "$rules_file" | head -n1)
+        if [ -n "$brew_name" ] && [ -n "$npm_name" ] && is_brew_formula_installed "$brew_name" && is_npm_global_installed "$npm_name"; then
+          log_warn "Rule '$logical': both brew and npm providers appear installed; leaving as-is."
+        fi
+        if is_npm_global_installed "$package_name"; then continue; fi
+        if [ "$DRYRUN" = "1" ]; then
+          log_info "Would install (rule): npm global $package_name"
+        else
+          if confirm_continue "Install rule package via npm: $package_name" "$FORCE"; then
+            npm install -g "$package_name" || log_warn "Rule install failed: npm package $package_name"
+          fi
+        fi
+        ;;
+      *) log_warn "Rule '$logical' skipped: unsupported source type '$source_type'." ;;
+    esac
+  done < "$rules_file"
+}
+
 if [ "$DRYRUN" = "1" ]; then
   log_step "Starting sync (DRY-RUN) from $OUTDIR ..."
 else
   log_step "Starting sync from $OUTDIR ..."
 fi
+
+process_package_rules
 
 # --- Homebrew ---------------------------------------------------------------
 if has_type brew || has_type brew-taps || has_type brew-formulae || has_type brew-casks; then
@@ -548,6 +626,42 @@ if has_type pip && [ -f "$OUTDIR/pip-user.txt" ]; then
       fi
       rm -f "$tmp_want" "$tmp_have_top" "$tmp_have_all"
     fi
+  fi
+fi
+
+
+# --- apt --------------------------------------------------------------------
+if has_type apt && [ -f "$OUTDIR/apt-packages.txt" ]; then
+  if [ "$PRUNE_EXTRAS" = "1" ]; then
+    log_warn "Apt pruning is intentionally unsupported; skipping prune for apt."
+  fi
+  if [ "$RECREATE_EXPLICIT" = "1" ]; then
+    log_warn "Apt recreate is intentionally unsupported; using install-missing behavior."
+  fi
+  if command -v apt-get >/dev/null 2>&1 && command -v apt-mark >/dev/null 2>&1 && command -v dpkg-query >/dev/null 2>&1; then
+    log_step "Syncing apt packages (install missing only) ..."
+    tmp_want=$(mktemp); tmp_have=$(mktemp)
+    _strip_list < "$OUTDIR/apt-packages.txt" > "$tmp_want"
+    dpkg-query -W -f='${Package}\n' | sort -u > "$tmp_have"
+    if [ "$DRYRUN" = "1" ]; then
+      log_info "Would install apt packages:"; comm -23 "$tmp_want" "$tmp_have" | sed 's/^/- /'
+    else
+      tmp_missing=$(mktemp)
+      comm -23 "$tmp_want" "$tmp_have" > "$tmp_missing"
+      if [ -s "$tmp_missing" ]; then
+        count=$(wc -l < "$tmp_missing" | tr -d ' ')
+        if confirm_continue "Install $count apt package(s)" "$FORCE"; then
+          sudo apt-get update
+          xargs sudo apt-get install -y < "$tmp_missing"
+        else
+          log_warn "Skipped installing apt packages by user choice."
+        fi
+      fi
+      rm -f "$tmp_missing"
+    fi
+    rm -f "$tmp_want" "$tmp_have"
+  else
+    log_warn "apt-get/apt-mark/dpkg-query not found, skipping apt sync."
   fi
 fi
 

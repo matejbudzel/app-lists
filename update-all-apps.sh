@@ -15,7 +15,7 @@ Update/upgrade system-wide packages and apps for selected types.
 
 Options:
   --types LIST     Comma-separated types, or positional CSV. Types:
-                   brew, brew-formulae, brew-casks, appstore, npm, yarn, pnpm, pip
+                   brew, brew-formulae, brew-casks, appstore, npm, yarn, pnpm, pip, apt
   --force          Skip interactive confirmations
   --help, -h       Show this help and exit
 EOF
@@ -32,7 +32,7 @@ done
 types_parse_args "$@"
 
 # Determine types label and confirm
-SELECTED_TYPES=$(selected_types_label "brew, brew-formulae, brew-casks, appstore, npm, yarn, pnpm, pip")
+SELECTED_TYPES=0 0selected_available_types_label "brew, brew-formulae, brew-casks, appstore, npm, yarn, pnpm, pip, apt")
 confirm_continue "$SELECTED_TYPES" "$FORCE" || exit 1
 
 log_step "Starting system-wide package updates for: ${SELECTED_TYPES}"
@@ -89,6 +89,19 @@ if has_type pnpm && command -v pnpm &> /dev/null; then
   pnpm update -g || log_warn "pnpm update failed"
 else
   log_warn "pnpm not found, skipping pnpm updates"
+fi
+
+
+# apt packages
+if has_type apt; then
+  if command -v apt-get >/dev/null 2>&1; then
+    log_step "Updating apt package indexes..."
+    sudo apt-get update || log_warn "apt-get update failed"
+    log_step "Upgrading apt packages..."
+    sudo apt-get upgrade || log_warn "apt-get upgrade failed"
+  else
+    log_warn "apt-get not found, skipping apt updates"
+  fi
 fi
 
 # pip — update user packages
