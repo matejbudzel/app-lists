@@ -79,6 +79,9 @@ log_step "Starting export for: ${SELECTED_TYPES}"
 
 # --- Arc extensions ---
 if has_type arc-extensions; then
+  if [ ! -d "$HOME/Library/Application Support/Arc" ] && [ ! -d "$HOME/Library/Application Support/Arc/User Data" ]; then
+    log_info "Skipping Arc extensions export: Arc browser data directory not found (leaving existing list untouched)."
+  else
   log_info "Exporting Arc extensions..."
   tmp_arc="$OUTDIR/.arc-extensions.tmp"
   : > "$tmp_arc"
@@ -124,9 +127,10 @@ if has_type arc-extensions; then
   if [ -s "$tmp_arc" ]; then
     sort -u "$tmp_arc" > "$OUTDIR/arc-extensions.txt"
   else
-    rm -f "$OUTDIR/arc-extensions.txt"
+    log_info "No Arc extensions detected; leaving existing arc-extensions.txt untouched."
   fi
   rm -f "$tmp_arc"
+  fi
 fi
 
 log_step "Exporting package and app lists to $OUTDIR"
@@ -166,12 +170,16 @@ fi
 
 # --- Manual Apps (/Applications & ~/Applications not via Brew or MAS) ---
 if has_type manual-apps; then
-  apps_system=$(ls /Applications 2>/dev/null || echo "")
-  apps_user=$(ls ~/Applications 2>/dev/null || echo "")
-  brew_casks=$(brew list --cask 2>/dev/null)
-  appstore_apps=$(awk -F'#' '{name=$2; gsub(/^[ \t]+|[ \t]+$/,"",name); if (name!="") print name ".app"}' "$OUTDIR/appstore-apps.txt" 2>/dev/null || echo "")
-  other_apps=$(comm -23 <(echo -e "$apps_system\n$apps_user" | sort) <(echo -e "$brew_casks\n$appstore_apps" | sort))
-  echo "$other_apps" > "$OUTDIR/manual-apps.txt"
+  if [ "$(uname -s)" = "Darwin" ]; then
+    apps_system=$(ls /Applications 2>/dev/null || echo "")
+    apps_user=$(ls ~/Applications 2>/dev/null || echo "")
+    brew_casks=$(brew list --cask 2>/dev/null)
+    appstore_apps=$(awk -F'#' '{name=$2; gsub(/^[ \t]+|[ \t]+$/,"",name); if (name!="") print name ".app"}' "$OUTDIR/appstore-apps.txt" 2>/dev/null || echo "")
+    other_apps=$(comm -23 <(echo -e "$apps_system\n$apps_user" | sort) <(echo -e "$brew_casks\n$appstore_apps" | sort))
+    echo "$other_apps" > "$OUTDIR/manual-apps.txt"
+  else
+    log_info "Skipping manual apps export: manual-apps is Darwin-only (leaving existing list untouched)."
+  fi
 fi
 
 # --- npm ---
