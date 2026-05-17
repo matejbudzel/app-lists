@@ -151,17 +151,18 @@ process_package_rules
 # --- Homebrew ---------------------------------------------------------------
 if has_type brew || has_type brew-taps || has_type brew-formulae || has_type brew-casks; then
   if ! command -v brew &> /dev/null; then
-    # Ask for confirmation before installing Homebrew; if declined, skip all brew tasks
-    if confirm_continue "Install Homebrew (official install script)" "$FORCE"; then
-      log_step "Installing Homebrew..."
-      if [ "$DRYRUN" = "1" ]; then
-        log_info "Would run: Homebrew install script"
-      else
-        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-      fi
-    else
+    if [ "$DRYRUN" = "1" ]; then
       SKIP_BREW=1
-      log_warn "User declined Homebrew install; skipping all Homebrew-related sync tasks."
+      log_info "Skipping Homebrew sync in dry-run: 'brew' is not installed on this machine."
+    else
+      # Ask for confirmation before installing Homebrew; if declined, skip all brew tasks
+      if confirm_continue "Install Homebrew (official install script)" "$FORCE"; then
+        log_step "Installing Homebrew..."
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+      else
+        SKIP_BREW=1
+        log_warn "User declined Homebrew install; skipping all Homebrew-related sync tasks."
+      fi
     fi
   fi
   if [ "$SKIP_BREW" != "1" ]; then
@@ -667,26 +668,30 @@ fi
 
 # --- Manual Apps (report-only) ----------------------------------------------
 if has_type manual-apps && [ -f "$OUTDIR/manual-apps.txt" ]; then
-  log_step "Checking manual apps (not managed by Brew/MAS) ..."
-  tmp_want=$(mktemp)
-  _strip_list < "$OUTDIR/manual-apps.txt" > "$tmp_want"
-  tmp_missing=$(mktemp)
-  while IFS= read -r app; do
-    [ -z "$app" ] && continue
-    case "$app" in \#*) continue;; esac
-    if [ -e "/Applications/$app" ] || [ -e "$HOME/Applications/$app" ]; then
-      :
+  if [ "$(uname -s)" = "Darwin" ]; then
+    log_step "Checking manual apps (not managed by Brew/MAS) ..."
+    tmp_want=$(mktemp)
+    _strip_list < "$OUTDIR/manual-apps.txt" > "$tmp_want"
+    tmp_missing=$(mktemp)
+    while IFS= read -r app; do
+      [ -z "$app" ] && continue
+      case "$app" in \#*) continue;; esac
+      if [ -e "/Applications/$app" ] || [ -e "$HOME/Applications/$app" ]; then
+        :
+      else
+        echo "$app" >> "$tmp_missing"
+      fi
+    done < "$tmp_want"
+    if [ -s "$tmp_missing" ]; then
+      # Print just the app names (no prefixes), one per line
+      cat "$tmp_missing"
     else
-      echo "$app" >> "$tmp_missing"
+      log_success "All manual apps from list are already installed."
     fi
-  done < "$tmp_want"
-  if [ -s "$tmp_missing" ]; then
-    # Print just the app names (no prefixes), one per line
-    cat "$tmp_missing"
+    rm -f "$tmp_want" "$tmp_missing"
   else
-    log_success "All manual apps from list are already installed."
+    log_info "Skipping manual apps check: this type is Darwin-only."
   fi
-  rm -f "$tmp_want" "$tmp_missing"
 fi
 
 
