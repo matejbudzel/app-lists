@@ -134,6 +134,49 @@ has_type() {
 
 # Return a human-friendly label of selected types. Pass the full list string for the script.
 # Usage: label=$(selected_types_label "brew, brew-formulae, ...")
+
+
+type_available() {
+  local key="$1"
+  case "$key" in
+    brew|brew-taps|brew-formulae|brew-casks) command -v brew >/dev/null 2>&1 ;;
+    appstore) command -v mas >/dev/null 2>&1 ;;
+    manual-apps) return 0 ;;
+    arc-extensions) return 0 ;;
+    npm) command -v npm >/dev/null 2>&1 ;;
+    yarn) command -v yarn >/dev/null 2>&1 ;;
+    pnpm) command -v pnpm >/dev/null 2>&1 ;;
+    pip) [ -n "$(detect_pip_cmd)" ] ;;
+    apt) command -v apt-get >/dev/null 2>&1 && command -v apt-mark >/dev/null 2>&1 && command -v dpkg-query >/dev/null 2>&1 ;;
+    *) return 1 ;;
+  esac
+}
+
+selected_available_types_label() {
+  local all_list="$1"
+  local item label="" first=1
+  if [ -n "${TYPES:-}" ]; then
+    printf "%s" "$TYPES"
+    return 0
+  fi
+  IFS=','
+  for item in $all_list; do
+    item=$(printf "%s" "$item" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    [ -z "$item" ] && continue
+    if type_available "$item"; then
+      if [ "$first" = "1" ]; then
+        label="$item"; first=0
+      else
+        label="$label, $item"
+      fi
+    fi
+  done
+  if [ -z "$label" ]; then
+    printf "all types (%s)" "$all_list"
+  else
+    printf "available types (%s)" "$label"
+  fi
+}
 selected_types_label() {
   local all_list="$1"
   if [ -z "${TYPES:-}" ]; then

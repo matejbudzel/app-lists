@@ -20,7 +20,7 @@ Options:
   --types LIST          Comma-separated types to export (or positional CSV)
                         Types: brew, brew-taps, brew-formulae, brew-casks,
                                appstore, manual-apps, arc-extensions,
-                               npm, yarn, pnpm, pip
+                               npm, yarn, pnpm, pip, apt
   --help, -h            Show this help and exit
 
 Examples:
@@ -53,7 +53,7 @@ types_parse_args "$@"
 outdir_handle_args "$@"
 
 # Print selected types and ask for confirmation
-SELECTED_TYPES=$(selected_types_label "brew, brew-taps, brew-formulae, brew-casks, appstore, manual-apps, arc-extensions, npm, yarn, pnpm, pip")
+SELECTED_TYPES=$(selected_types_label "brew, brew-taps, brew-formulae, brew-casks, appstore, manual-apps, arc-extensions, npm, yarn, pnpm, pip, apt")
 confirm_continue "$SELECTED_TYPES" "$FORCE" || exit 1
 
 # Ensure output directory exists and is writable
@@ -217,6 +217,17 @@ if has_type pnpm && command -v pnpm &> /dev/null; then
     fi
 fi
 
+
+# --- apt ---
+if has_type apt; then
+  if command -v apt-mark >/dev/null 2>&1; then
+    log_info "Exporting manually installed apt packages..."
+    apt-mark showmanual | _strip_list > "$OUTDIR/apt-packages.txt"
+  else
+    log_warn "apt-mark not found, skipping apt export."
+  fi
+fi
+
 # --- pip (unified; explicit packages only) ---
 PIP_CMD="$(detect_pip_cmd)"
 if has_type pip && [ -n "$PIP_CMD" ]; then
@@ -253,3 +264,4 @@ log_info "npm-global.txt: $(count_non_empty "$OUTDIR/npm-global.txt")"
 log_info "yarn-global.txt: $(count_non_empty "$OUTDIR/yarn-global.txt")"
 log_info "pnpm-global.txt: $(count_non_empty "$OUTDIR/pnpm-global.txt")"
 log_info "pip-user.txt: $(count_non_empty "$OUTDIR/pip-user.txt")"
+log_info "apt-packages.txt: $(count_non_empty "$OUTDIR/apt-packages.txt")"

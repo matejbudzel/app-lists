@@ -1,6 +1,6 @@
 # app-lists
 
-Declarative, scriptable management of macOS apps and developer tooling. Keep a set of plain‑text lists as the source of truth, dump your current machine state, and sync or update your system accordingly.
+Declarative, scriptable management of macOS and Debian/Ubuntu apps plus developer tooling. Keep a set of plain‑text lists as the source of truth, dump your current machine state, and sync or update your system accordingly.
 
 Default list directory: `~/.applists` (override via `OUTDIR` env or `--outdir DIR`).
 
@@ -63,6 +63,7 @@ Use `--types` to run a subset. The umbrella `brew` type enables all brew‑relat
 - `yarn`
 - `pnpm`
 - `pip`
+- `apt`
 
 Examples:
 
@@ -81,6 +82,8 @@ Examples:
 - `yarn-global.txt`: package names without versions (scopes preserved)
 - `pnpm-global.txt`: package names (from `pnpm list -g --json`)
 - `pip-user.txt`: user packages (names only; versions stripped)
+- `apt-packages.txt`: apt package names (one per line; comments/blank lines allowed)
+- `package-rules.txt`: manual cross-platform logical package mapping rules
 
 ## Configuration
 
@@ -98,6 +101,10 @@ Examples:
   - `--dry-run` for sync prints planned actions without changing the system.
 - Brew bootstrap:
   - If Homebrew is missing, sync can ask to install it. Declining will skip all brew‑related tasks for that run.
+- Apt safety behavior:
+  - Installs only missing packages listed in `apt-packages.txt`.
+  - `--prune-extras` and `--recreate-explicit` are intentionally unsupported for apt (warns and skips).
+  - Apt sources/taps management is intentionally not implemented yet.
 
 ## Requirements
 
@@ -115,3 +122,20 @@ All of the code was vibe-coded, I am no shell expert 😅
 ## License
 
 See `LICENSE`.
+
+## package-rules.txt (manual rules layer)
+
+`package-rules.txt` is optional and manually curated. It maps a logical package name to a platform-specific source type and package name:
+
+```text
+# logical-name | platform | source-type | package-name
+pure-prompt | darwin | brew-formulae | pure
+pure-prompt | linux  | npm          | pure-prompt
+```
+
+Rules are applied during `sync-from-lists` before normal list processing:
+- Platform is `darwin` on macOS (`uname -s = Darwin`) and `linux` on Linux (`uname -s = Linux`).
+- A rule runs only if the source type is selected by `--types` (or all types are selected) and the manager is available.
+- Currently supported rule source types: `brew-formulae`, `npm`. Unsupported source types are skipped with warnings.
+- Rules do not modify list files, do not uninstall alternatives, and do not force-install missing package managers.
+- If both brew+npm variants for the same logical package appear installed, the script warns and leaves the system unchanged.
