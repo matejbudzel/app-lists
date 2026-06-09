@@ -32,7 +32,7 @@ done
 types_parse_args "$@"
 
 # Determine types label and confirm
-SELECTED_TYPES=0 0selected_available_types_label "brew, brew-formulae, brew-casks, appstore, npm, yarn, pnpm, pip, apt")
+SELECTED_TYPES=$(selected_available_types_label "brew, brew-formulae, brew-casks, appstore, npm, yarn, pnpm, pip, apt")
 confirm_continue "$SELECTED_TYPES" "$FORCE" || exit 1
 
 log_step "Starting system-wide package updates for: ${SELECTED_TYPES}"
